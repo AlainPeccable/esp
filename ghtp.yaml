@@ -1,0 +1,215 @@
+substitutions:
+  name: esphome-ghtp
+  friendly_name: ESP D1 Mini V3 USB-C
+  short_name: ESP Rez
+  core_name: $short_name Core
+  ld2410_name: $short_name mmWave
+  mq2_name: $short_name Gaz
+  dht22_name: $short_name H&T
+  comment: MQ2 Gaz - DHT22 T&H - HLK-LD2410C-P Presence & BLE
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+  comment: ${comment}
+  on_boot:
+    - priority: 900.0
+      then:
+        - lambda: |-
+            id(cpu_speed) = ESP.getCpuFreqMHz();
+
+# Define Card type
+esp8266:
+  board: d1_mini
+
+# Enable logging & ota
+logger:
+ota:
+improv_serial:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "YOUR_KEY"
+
+# Enable ESPHome Web
+web_server:
+  local: true
+
+# Define CPU Speed 
+globals:
+  - id: cpu_speed
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+# Define time & sync
+time:
+  - platform: sntp
+    id: time_sntp
+
+# Define HLK-LD2410C-P
+uart:
+  id: ld2410_uart
+  tx_pin: TX
+  rx_pin: RX
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+ld2410:
+  uart_id: ld2410_uart
+  id: mmwave
+
+# Binary sensors
+binary_sensor:
+  # HLK-LD2410C-P data from OUT PIN on pin D1
+  - platform: gpio
+    pin: D1
+    name: "$ld2410_name Out Pin"
+    device_class: presence
+  
+  # HLK-LD2410C-P data from UART
+  - platform: ld2410
+    has_target:
+      name: "$ld2410_name Presence"
+    has_moving_target:
+      name: "$ld2410_name Moving Target"
+    has_still_target:
+      name: "$ld2410_name Still Target"
+
+# Exposes control switches
+switch:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    bluetooth:
+      name: "$ld2410_name Control bluetooth"
+
+# Exposes control selection
+select:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    distance_resolution:
+      name: "$ld2410_name Distance resolution"
+    light_function:
+      name: "$ld2410_name Light function"
+
+# Exposes control number
+number:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    timeout:
+      name: "$ld2410_name Timeout"
+    light_threshold:
+      name: "$ld2410_name Light threshold"
+    max_move_distance_gate:
+      name: "$ld2410_name Max move distance gate"
+    max_still_distance_gate:
+      name: "$ld2410_name Max still distance gate"
+
+# Sensors
+sensor:
+  # Reports the WiFi signal strength/RSSI in dB
+  - platform: wifi_signal
+    name: "$core_name WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  # Reports the WiFi signal strength in %
+  - platform: copy 
+    source_id: wifi_signal_db
+    name: "$core_name WiFi Signal"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: "diagnostic"
+    device_class: ""
+
+  # Reports the uptime
+  - platform: uptime
+    name: "$core_name Uptime Sensor"
+    id: uptime_seconds
+
+  # Device CPU Speed
+  - platform: template
+    name: "$core_name Cpu Speed"
+    accuracy_decimals: 0
+    unit_of_measurement: Mhz
+    lambda: |-
+      return (id(cpu_speed));
+    entity_category: "diagnostic"
+
+  # MQ2 - Gaz Detector on pin A0
+  - platform: adc
+    pin: A0
+    name: "$mq2_name Smoke Sensor"
+    update_interval: 30s
+    filters:
+      - multiply: 100
+    unit_of_measurement: "%"
+    icon: "mdi:percent"
+
+  # DHT22 - Temp & Humidity on pin D0
+  - platform: dht
+    pin: D0
+    temperature:
+      name: "$dht22_name Temperature"
+    humidity:
+      name: "$dht22_name Humidity"
+    update_interval: 20s
+
+  # HLK-LD2410C-P
+  - platform: ld2410
+    light:
+      name: "$ld2410_name Light"
+    moving_distance:
+      name : "$ld2410_name Moving Distance"
+    still_distance:
+      name: "$ld2410_name Still Distance"
+    moving_energy:
+      name: "$ld2410_name Move Energy"
+    still_energy:
+      name: "$ld2410_name Still Energy"
+    detection_distance:
+      name: "$ld2410_name Detection Distance"
+
+# Text Sensors
+text_sensor:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    version:
+      name: "$ld2410_name Firmware version"
+    mac_address:
+      name: "$ld2410_name MAC address"
+
+# Exposes control buttons
+button:
+  # ESP
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "$core_name Reboot"
+
+  # HLK-LD2410C-P
+  - platform: ld2410
+    restart:
+      name: "$ld2410_name Restart"
+
+# WiFi configuration
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  # Manual IP config - Remove for DHCP
+  manual_ip:
+    static_ip: 192.168.1.173
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+  
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: ${name}
+    password: !secret wifi_ap_password
+
+captive_portal:
