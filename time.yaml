@@ -1,0 +1,49 @@
+substitutions:
+  short_name: ESP Time
+  comment: Display uptime in sec and in d:h:m:s
+
+# Define time & sync
+time:
+  - platform: sntp
+    id: time_sntp
+
+  - platform: homeassistant
+    id: current_time
+    on_time_sync:
+      - component.update: uptime_timestamp
+
+# Sensors
+sensor:
+  # Reports the uptime
+  - platform: uptime
+    name: "$short_name Uptime Sensor"
+    id: uptime_seconds
+
+# Text Sensors
+text_sensor:
+  #  Creates a sensor of the uptime of the device, in formatted days, hours, minutes and seconds
+  - platform: template
+    id: uptime_timestamp
+    name: "$short_name Uptime"
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      int seconds = (id(uptime_seconds).state);
+      int days = seconds / (24 * 3600);
+      seconds = seconds % (24 * 3600);
+      int hours = seconds / 3600;
+      seconds = seconds % 3600;
+      int minutes = seconds /  60;
+      seconds = seconds % 60;
+      if ( days > 3650 ) {
+        return { "Starting up" };
+      } else if ( days ) {
+        return { (String(days) +"d " + String(hours) +"h " + String(minutes) +"m "+ String(seconds) +"s").c_str() };
+      } else if ( hours ) {
+        return { (String(hours) +"h " + String(minutes) +"m "+ String(seconds) +"s").c_str() };
+      } else if ( minutes ) {
+        return { (String(minutes) +"m "+ String(seconds) +"s").c_str() };
+      } else {
+        return { (String(seconds) +"s").c_str() };
+      }
+    icon: mdi:clock-start
