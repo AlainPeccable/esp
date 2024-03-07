@@ -1,0 +1,137 @@
+substitutions:
+  name: bt_template
+  friendly_name: ESP32 BT Template
+  short_name: ESP32 BT
+  core_name: $short_name Core
+  comment: Bluetooth Proxy
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+  comment: ${comment}
+  on_boot:
+    - priority: 900.0
+      then:
+        - lambda: |-
+            id(cpu_speed) = ESP.getCpuFreqMHz();
+  project:
+    name: esphome.bluetooth-proxy
+    version: "1.0"
+
+# Define Card type
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging & ota
+logger:
+ota:
+improv_serial:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "YOUR_KEY"
+
+# Import BT
+dashboard_import:
+  package_import_url: github://esphome/firmware/bluetooth-proxy/esp32-generic.yaml@main
+
+# Enable ESPHome Web
+web_server:
+  local: true
+
+# Local WiFI Config & fix IP
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  manual_ip:
+    static_ip: 192.168.1.177
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+  
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: ${name}
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+# Define CPU Speed 
+globals:
+  - id: cpu_speed
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+# Define time & sync
+time:
+  - platform: sntp
+    id: time_sntp
+
+  - platform: homeassistant
+    id: current_time
+    on_time_sync:
+      - component.update: uptime_timestamp
+
+# Bluetooth config
+esp32_ble_tracker:
+  scan_parameters:
+    # We currently use the defaults to ensure Bluetooth
+    # can co-exist with WiFi In the future we may be able to
+    # enable the built-in coexistence logic in ESP-IDF
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+# Sensors
+sensor:
+  # Reports the WiFi signal strength/RSSI in dB
+  - platform: wifi_signal
+    name: "$core_name WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  # Reports the WiFi signal strength in %
+  - platform: copy 
+    source_id: wifi_signal_db
+    name: "$core_name WiFi Signal"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: "diagnostic"
+    device_class: ""
+
+  # Reports the uptime
+  - platform: uptime
+    name: "$core_name Uptime Sensor"
+    id: uptime_seconds
+
+  # Device CPU Speed
+  - platform: template
+    name: "$core_name Cpu Speed"
+    accuracy_decimals: 0
+    unit_of_measurement: Mhz
+    lambda: |-
+      return (id(cpu_speed));
+    entity_category: "diagnostic"
+
+#Exposes control buttons
+button:
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "$core_name Reboot"
+
+  - platform: safe_mode
+    name: "$core_name Safe Mode Boot"
+    entity_category: diagnostic
+
+  - platform: factory_reset
+    disabled_by_default: True
+    name: "$core_name Factory Reset"
+    id: factory_reset_all
