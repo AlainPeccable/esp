@@ -205,7 +205,7 @@ sensor:
     name: "$bme680_name Indoor Air Quality"
     id: iaq
     icon: "mdi:gauge"
-    # caulculation: comp_gas = log(R_gas[ohm]) + 0.04 log(Ohm)/%rh * hum[%rh]
+    # Calculation: comp_gas = log(R_gas[ohm]) + 0.04 log(Ohm)/%rh * hum[%rh]
     lambda: |-
       return log(id(gas_resistance).state) + 0.04 *  id(humidity).state;
 
@@ -224,8 +224,9 @@ sensor:
     detection_distance:
       name: "$ld2410_name Detection Distance"
 
-#  Creates a sensor of the uptime of the device, in formatted days, hours, minutes and seconds
+#  Text Sensor
 text_sensor:
+  # BME680 IAQ Classification
   - platform: template
     name: "$bme680_name IAQ Classification"
     icon: "mdi:checkbox-marked-circle-outline"
