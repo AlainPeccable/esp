@@ -1,0 +1,274 @@
+substitutions:
+  name: esp32-bluetooth-proxy-e2ab8c
+  friendly_name: ESP32 BT Proxy ArOme
+  short_name: ESP32 ArOme
+  core_name: $short_name Core
+  bme680_name: $short_name TPH
+  ld2410_name: $short_name mmWave
+  comment: Bluetooth Proxy & BME680 Temperature Pressure Humidity & HLK-LD2410C-P Presence
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+  comment: ${comment}
+  on_boot:
+    - priority: 900.0
+      then:
+        - lambda: |-
+            id(cpu_speed) = ESP.getCpuFreqMHz();
+  project:
+    name: esphome.bluetooth-proxy
+    version: "1.0"
+
+# Define Card type
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging & ota
+logger:
+ota:
+improv_serial:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "VE4bNta9HDnOAcZ80v7Ujc4jXs4GFmMERLs4kybq1JA="
+
+# Enable ESPHome Web
+#web_server:
+  #local: true
+
+# Local WiFI Config & fix IP
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  manual_ip:
+    static_ip: 192.168.1.177
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+  
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: ${name}
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+# Define CPU Speed 
+globals:
+  - id: cpu_speed
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+# Define time & sync
+time:
+  - platform: sntp
+    id: time_sntp
+
+# Import BT
+dashboard_import:
+  package_import_url: github://esphome/firmware/bluetooth-proxy/esp32-generic.yaml@main
+
+# Bluetooth config
+esp32_ble_tracker:
+  scan_parameters:
+    # We currently use the defaults to ensure Bluetooth
+    # can co-exist with WiFi In the future we may be able to
+    # enable the built-in coexistence logic in ESP-IDF
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+# Define HLK-LD2410C-P
+uart:
+  id: ld2410_uart
+  tx_pin: TX
+  rx_pin: RX
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+ld2410:
+  uart_id: ld2410_uart
+  id: mmwave
+
+# Define i2c connection for BME680
+i2c:
+  sda: 21
+  scl: 22
+  scan: true
+  id: bus_a
+
+# Exposes control number
+number:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    timeout:
+      name: "$ld2410_name Timeout"
+    light_threshold:
+      name: "$ld2410_name Light threshold"
+    max_move_distance_gate:
+      name: "$ld2410_name Max move distance gate"
+    max_still_distance_gate:
+      name: "$ld2410_name Max still distance gate"
+
+# Binary sensors
+binary_sensor:
+  # HLK-LD2410C-P data from OUT PIN
+  - platform: gpio
+    pin: GPIO34
+    name: "$ld2410_name Out Pin"
+    device_class: presence
+  
+  # HLK-LD2410C-P data from UART
+  - platform: ld2410
+    has_target:
+      name: "$ld2410_name Presence"
+    has_moving_target:
+      name: "$ld2410_name Moving Target"
+    has_still_target:
+      name: "$ld2410_name Still Target"
+
+# Exposes control switches
+switch:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    bluetooth:
+      name: "$ld2410_name Control bluetooth"
+
+# Exposes control selection
+select:
+  # HLK-LD2410C-P
+  - platform: ld2410
+    distance_resolution:
+      name: "$ld2410_name Distance resolution"
+    light_function:
+      name: "$ld2410_name Light function"
+
+# Sensors
+sensor:
+  # Reports the WiFi signal strength/RSSI in dB
+  - platform: wifi_signal
+    name: "$core_name WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  # Reports the WiFi signal strength in %
+  - platform: copy 
+    source_id: wifi_signal_db
+    name: "$core_name WiFi Signal"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: "diagnostic"
+    device_class: ""
+
+  # Reports the uptime
+  - platform: uptime
+    name: "$core_name Uptime Sensor"
+    id: uptime_seconds
+
+  # Device CPU Speed
+  - platform: template
+    name: "$core_name Cpu Speed"
+    accuracy_decimals: 0
+    unit_of_measurement: Mhz
+    lambda: |-
+      return (id(cpu_speed));
+    entity_category: "diagnostic"
+  
+  # BME680
+  - platform: bme680
+    temperature:
+      name: "$bme680_name Temperature"
+      oversampling: 16x
+    pressure:
+      id: "humidity"
+      name: "$bme680_name Pressure"
+    humidity:
+      name: "$bme680_name Humidity"
+    gas_resistance:
+      id: "gas_resistance"
+      name: "$bme680_name Gas Resistance"
+    i2c_id: bus_a
+    address: 0x77
+    update_interval: 60s
+  
+  - platform: template
+    name: "$bme680_name Indoor Air Quality"
+    id: iaq
+    icon: "mdi:gauge"
+    # caulculation: comp_gas = log(R_gas[ohm]) + 0.04 log(Ohm)/%rh * hum[%rh]
+    lambda: |-
+      return log(id(gas_resistance).state) + 0.04 *  id(humidity).state;
+
+  # HLK-LD2410C-P
+  - platform: ld2410
+    light:
+      name: "$ld2410_name Light"
+    moving_distance:
+      name : "$ld2410_name Moving Distance"
+    still_distance:
+      name: "$ld2410_name Still Distance"
+    moving_energy:
+      name: "$ld2410_name Move Energy"
+    still_energy:
+      name: "$ld2410_name Still Energy"
+    detection_distance:
+      name: "$ld2410_name Detection Distance"
+
+#  Creates a sensor of the uptime of the device, in formatted days, hours, minutes and seconds
+text_sensor:
+  - platform: template
+    name: "$bme680_name IAQ Classification"
+    icon: "mdi:checkbox-marked-circle-outline"
+    lambda: |-
+      if (int(id(iaq).state) <= 50) {
+        return {"Excellent"};
+      }
+      else if (int(id(iaq).state) <= 100) {
+        return {"Good"};
+      }
+      else if (int(id(iaq).state) <= 150) {
+        return {"Lightly polluted"};
+      }
+      else if (int(id(iaq).state) <= 200) {
+        return {"Moderately polluted"};
+      }
+      else if (int(id(iaq).state) <= 250) {
+        return {"Heavily polluted"};
+      }
+      else if (int(id(iaq).state) <= 350) {
+        return {"Severely polluted"};
+      }
+      else if (int(id(iaq).state) <= 500) {
+        return {"Extremely polluted"};
+      }
+      else {
+        return {"unknown"};
+      }
+
+  # HLK-LD2410C-P
+  - platform: ld2410
+    version:
+      name: "$ld2410_name Firmware version"
+    mac_address:
+      name: "$ld2410_name MAC address"
+
+#Exposes control buttons
+button:
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "$core_name Reboot"
+  
+    # HLK-LD2410C-P
+  - platform: ld2410
+    restart:
+      name: "$ld2410_name Restart"
