@@ -27,8 +27,9 @@ esp32:
 
 # Enable logging & ota
 logger:
-ota:
 improv_serial:
+ota:
+  - platform: esphome
 
 # Enable Home Assistant API
 api:
