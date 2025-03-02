@@ -154,7 +154,11 @@ sensor:
 
   # DHT22 - Temp & Humidity on pin D0
   - platform: dht
-    pin: D0
+    pin:
+      number: D0
+      mode:
+        input: true
+        pullup: false
     temperature:
       name: "$dht22_name Temperature"
     humidity:
